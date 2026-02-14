@@ -69,11 +69,10 @@ func (pb *PBar) CleanUp() {
 		return // Not a terminal, running in a pipeline or test
 	}
 
-	fmt.Print("\x1B7")                 // Save the cursor position
+	fmt.Printf("\x1B[%d;0f", pb.wsrow) // Move the cursor to the bottom line (progress bar)
+	fmt.Print("\x1B[2K")               // Erase the progress bar line
 	fmt.Printf("\x1B[0;%dr", pb.wsrow) // Drop margin reservation
-	fmt.Printf("\x1B[%d;0f", pb.wsrow) // Move the cursor to the bottom line
-	fmt.Print("\x1B[0K")               // Erase the entire line
-	fmt.Print("\x1B8")                 // Restore the cursor position util new size is calculated
+	fmt.Print("\x1B8")                 // Restore the cursor position to where program output left off
 }
 
 // updateWSize update the window size
@@ -117,12 +116,7 @@ func (pb *PBar) RenderPBar(count int) {
 	}
 
 	fmt.Print("\x1B7")       // Save the cursor position
-	fmt.Print("\x1B[2K")     // Erase the entire line
-	fmt.Print("\x1B[0J")     // Erase from cursor to end of screen
-	fmt.Print("\x1B[?47h")   // Save screen
-	fmt.Print("\x1B[1J")     // Erase from cursor to beginning of screen
-	fmt.Print("\x1B[?47l")   // Restore screen
-	defer fmt.Print("\x1B8") // Restore the cursor position util new size is calculated
+	defer fmt.Print("\x1B8") // Restore the cursor position
 
 	barWidth := int(math.Abs(float64(pb.wscol - pb.header)))               // Calculate the bar width
 	barDone := int(float64(barWidth) * float64(count) / float64(pb.Total)) // Calculate the bar done length
@@ -131,6 +125,7 @@ func (pb *PBar) RenderPBar(count int) {
 	bar := fmt.Sprintf("[%s%s]", done, todo)                               // Combine the done and todo string
 
 	fmt.Printf("\x1B[%d;%dH", pb.wsrow, 0) // move cursor to row #, col #
+	fmt.Print("\x1B[2K")                    // Erase the progress bar line before redrawing
 
 	switch {
 	case pb.wscol >= uint16(0) && pb.wscol <= uint16(9):
