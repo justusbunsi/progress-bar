@@ -1,34 +1,41 @@
 APP_NAME := progress_bar
-GOOS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
-GOARCH := $(subst x86_64,amd64,$(shell uname -m))
-GO_FILES := $(shell find . -type f -not -path './vendor/*' -name '*.go')
 
-.PHONY all: clean test build
-.PHONY test: go-fmt go-vet go-test
-.PHONY build: clean
-.PHONY install: build
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
+GOPATH := $(shell go env GOPATH)
 
-go-test:
-	@echo "Running go test"
-	go test ./...
+.PHONY: all clean fmt vet test test-integration build install update
 
-go-vet:
-	@echo "Running go vet"
-	go vet ./...
+all: clean test build
 
-go-fmt:
+fmt:
 	@echo "Running go fmt"
 	go fmt ./...
 
-go-update:
-	@echo "Running go get"
-	go get -u -t ./... 
+vet:
+	@echo "Running go vet"
+	go vet ./...
+
+test: fmt vet
+	@echo "Running go test"
+	go test ./...
+
+test-integration: fmt vet
+	@echo "Running integration tests"
+	go test -tags=integration ./...
 
 build: clean
-	env GOOS=$(GOOS) GOARCH=$(GOARCH) go build -v -o "$(APP_NAME)"
+	@echo "Building $(APP_NAME) for $(GOOS)/$(GOARCH)"
+	env GOOS=$(GOOS) GOARCH=$(GOARCH) go build -v -o "$(APP_NAME)" .
 
 install: build
-	install -m 0755 "$(APP_NAME)" "$(GOPATH)/bin/"
+	@echo "Installing to $(GOPATH)/bin"
+	install -m 0755 "$(APP_NAME)" "$(GOPATH)/bin/$(APP_NAME)"
+
+update:
+	@echo "Updating deps"
+	go get -u -t ./...
+	go mod tidy
 
 clean:
-	find . -type f -name "$(APP_NAME).*" -exec rm -r {} \;
+	rm -f "$(APP_NAME)"
