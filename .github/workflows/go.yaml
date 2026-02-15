@@ -6,36 +6,41 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-    name: Build 
-    strategy:
-      matrix:
-        go: [1.19.9, 1.20.4]
+  test:
+    name: Test (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
-    container: golang:${{ matrix.go }}-bullseye
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['stable', 'oldstable']
+
     steps:
-      - name: Checkout 
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
 
       - name: Show versions
         run: |
           go version
+          go env GOPATH GOMODCACHE GOCACHE
 
       - name: Vet
-        run: |
-          go vet ./...
+        run: go vet ./...
 
-      - name: Test
-        run: |
-          go test -v ./...
+      - name: Test (unit)
+        run: go test -v ./...
+
+      - name: Test (integration)
+        run: go test -v -tags=integration ./...
 
       - name: Build
-        run: |
-          git config --global --add safe.directory '*'
-          go mod vendor
-          go build -v ./...
+        run: go build -v ./...
