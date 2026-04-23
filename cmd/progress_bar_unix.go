@@ -1,3 +1,5 @@
+//go:build !windows
+
 package cmd
 
 import (
@@ -7,6 +9,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"unsafe"
 )
 
 // PBar is a simple terminal progress bar for non-Windows platforms.
@@ -145,9 +148,43 @@ func (pb *PBar) SignalHandler() {
 	}()
 }
 
+// isTTYLocked checks if pb.outFd is attached to a terminal (TTY).
+// It uses ioctl(TIOCGWINSZ); ENOTTY/ENODEV mean "not a terminal".
+func (pb *PBar) isTTYLocked() (bool, error) {
+	_, _, errno := syscall.Syscall(
+		syscall.SYS_IOCTL,
+		pb.outFd,
+		uintptr(syscall.TIOCGWINSZ),
+		uintptr(unsafe.Pointer(&pb.winSize)),
+	)
+	if errno != 0 {
+		if errno == syscall.ENOTTY || errno == syscall.ENODEV {
+			return false, nil
+		}
+		return false, errno
+	}
+	return true, nil
+}
+
+// updateWSizeLocked refreshes terminal columns using ioctl(TIOCGWINSZ).
+// Assumes pb.mu is held.
+func (pb *PBar) updateWSizeLocked() error {
+	_, _, errno := syscall.Syscall(
+		syscall.SYS_IOCTL,
+		pb.outFd,
+		uintptr(syscall.TIOCGWINSZ),
+		uintptr(unsafe.Pointer(&pb.winSize)),
+	)
+	if errno != 0 {
+		return errno
+	}
+	pb.wscol = pb.winSize.Col
+	return nil
+}
+
 // RenderPBar renders the progress bar for the given count.
 //
-// count is updateWSizeLocked to [0..Total].
+// count is clamped to [0..Total].
 func (pb *PBar) RenderPBar(count int) {
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
