@@ -1,6 +1,6 @@
-//go:build !windows
+//go:build windows
 
-package cmd
+package progressbar
 
 import (
 	"fmt"
@@ -8,8 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"syscall"
-	"unsafe"
+	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // MultiBar manages a set of concurrent progress bars rendered at the bottom
@@ -40,33 +41,32 @@ type MultiBar struct {
 	out  io.Writer
 	outFd uintptr
 
-	renderedLines int  // number of bar lines currently on screen
+	renderedLines int
 	wscol         uint16
 
-	signalWinch chan os.Signal
-	signalTerm  chan os.Signal
-	closeOnce   sync.Once
-	done        chan struct{}
-
-	winSize struct {
-		Row    uint16
-		Col    uint16
-		Xpixel uint16
-		Ypixel uint16
-	}
+	signalTerm chan os.Signal
+	closeOnce  sync.Once
+	done       chan struct{}
 }
 
 // NewMultiBar creates a MultiBar that writes to stderr.
+// Enables ANSI/VT processing on Windows 10+.
 func NewMultiBar() *MultiBar {
 	mb := &MultiBar{
-		out:         os.Stderr,
-		outFd:       os.Stderr.Fd(),
-		signalWinch: make(chan os.Signal, 1),
-		signalTerm:  make(chan os.Signal, 1),
-		done:        make(chan struct{}),
+		out:        os.Stderr,
+		outFd:      os.Stderr.Fd(),
+		signalTerm: make(chan os.Signal, 1),
+		done:       make(chan struct{}),
 	}
-	signal.Notify(mb.signalWinch, syscall.SIGWINCH)
-	signal.Notify(mb.signalTerm, syscall.SIGTERM, syscall.SIGINT)
+
+	signal.Notify(mb.signalTerm, os.Interrupt)
+
+	h := windows.Handle(mb.outFd)
+	var mode uint32
+	if err := windows.GetConsoleMode(h, &mode); err == nil {
+		_ = windows.SetConsoleMode(h, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+	}
+
 	mb.mu.Lock()
 	_ = mb.updateWSizeLocked()
 	mb.mu.Unlock()
@@ -92,7 +92,6 @@ func (mb *MultiBar) NewBar(label string, total uint16) *Bar {
 // Close stops signal delivery. Safe to call multiple times.
 func (mb *MultiBar) Close() {
 	mb.closeOnce.Do(func() {
-		signal.Stop(mb.signalWinch)
 		signal.Stop(mb.signalTerm)
 		close(mb.done)
 	})
@@ -118,18 +117,23 @@ func (mb *MultiBar) CleanUp() {
 	mb.renderedLines = 0
 }
 
-// SignalHandler starts a goroutine that handles SIGWINCH (redraw) and
-// SIGTERM/SIGINT (cleanup + exit).
+// SignalHandler starts a goroutine that polls terminal width every 100 ms
+// (Windows has no SIGWINCH) and handles Ctrl+C for cleanup+exit.
 func (mb *MultiBar) SignalHandler() {
 	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-mb.done:
 				return
-			case <-mb.signalWinch:
+			case <-ticker.C:
 				mb.mu.Lock()
+				old := mb.wscol
 				_ = mb.updateWSizeLocked()
-				mb.renderAllLocked()
+				if mb.wscol != old {
+					mb.renderAllLocked()
+				}
 				mb.mu.Unlock()
 			case <-mb.signalTerm:
 				mb.CleanUp()
@@ -150,10 +154,6 @@ func (mb *MultiBar) Println(a ...any) {
 		return
 	}
 
-	// Move up to the top of the bar area, overwrite Bar-0's line with the log
-	// message, then redraw all bars from the new cursor position (one line
-	// below the log). The last bar's trailing \n shifts the bar area down by
-	// one line, keeping bars anchored at the bottom.
 	n := mb.renderedLines
 	if n > 0 {
 		fmt.Fprintf(mb.out, "\x1B[%dA", n)
@@ -165,31 +165,16 @@ func (mb *MultiBar) Println(a ...any) {
 }
 
 func (mb *MultiBar) isTTYLocked() (bool, error) {
-	_, _, errno := syscall.Syscall(
-		syscall.SYS_IOCTL,
-		mb.outFd,
-		uintptr(syscall.TIOCGWINSZ),
-		uintptr(unsafe.Pointer(&mb.winSize)),
-	)
-	if errno != 0 {
-		if errno == syscall.ENOTTY || errno == syscall.ENODEV {
-			return false, nil
-		}
-		return false, errno
-	}
-	return true, nil
+	var mode uint32
+	err := windows.GetConsoleMode(windows.Handle(mb.outFd), &mode)
+	return err == nil, nil
 }
 
 func (mb *MultiBar) updateWSizeLocked() error {
-	_, _, errno := syscall.Syscall(
-		syscall.SYS_IOCTL,
-		mb.outFd,
-		uintptr(syscall.TIOCGWINSZ),
-		uintptr(unsafe.Pointer(&mb.winSize)),
-	)
-	if errno != 0 {
-		return errno
+	var csbi windows.ConsoleScreenBufferInfo
+	if err := windows.GetConsoleScreenBufferInfo(windows.Handle(mb.outFd), &csbi); err != nil {
+		return err
 	}
-	mb.wscol = mb.winSize.Col
+	mb.wscol = uint16(csbi.Window.Right - csbi.Window.Left + 1)
 	return nil
 }

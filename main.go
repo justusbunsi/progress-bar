@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	cmd "github.com/justusbunsi/progress-bar/cmd"
+	"github.com/justusbunsi/progress-bar/progressbar"
 )
 
 func main() {
-	mb := cmd.NewMultiBar()
+	mb := progressbar.NewMultiBar()
 	mb.SignalHandler()
 	defer mb.CleanUp()
 
@@ -28,7 +28,7 @@ func main() {
 	for _, t := range tasks {
 		wg.Add(1)
 		bar := mb.NewBar(t.label, uint16(t.steps))
-		go func(b *cmd.Bar, steps int, delay time.Duration, label string) {
+		go func(b *progressbar.Bar, steps int, delay time.Duration, label string) {
 			defer wg.Done()
 			for i := 1; i <= steps; i++ {
 				b.Set(i)

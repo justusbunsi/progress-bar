@@ -17,7 +17,7 @@ Default characters are `#` (done) and `.` (remaining) but can be changed per bar
 ## Single bar
 
 ```go
-pb := cmd.NewPBar()
+pb := progressbar.NewPBar()
 pb.Total = 100
 pb.SignalHandler()
 defer pb.CleanUp()
@@ -34,7 +34,7 @@ for i := 1; i <= int(pb.Total); i++ {
 Multiple bars rendered simultaneously at the bottom — designed for `sync.WaitGroup` workloads. Log lines printed via `Println` scroll above all bars.
 
 ```go
-mb := cmd.NewMultiBar()
+mb := progressbar.NewMultiBar()
 mb.SignalHandler()
 defer mb.CleanUp()
 
@@ -42,7 +42,7 @@ var wg sync.WaitGroup
 for _, task := range tasks {
     wg.Add(1)
     bar := mb.NewBar(task.Name, uint16(task.Steps))
-    go func(b *cmd.Bar) {
+    go func(b *progressbar.Bar) {
         defer wg.Done()
         for i := 1; i <= int(b.Total); i++ {
             b.Set(i)

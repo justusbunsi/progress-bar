@@ -1,6 +1,6 @@
 //go:build integration && !windows
 
-package cmd
+package progressbar
 
 import (
 	"bytes"
