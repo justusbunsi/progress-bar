@@ -158,10 +158,9 @@ func (mb *MultiBar) Println(a ...any) {
 	if n > 0 {
 		fmt.Fprintf(mb.out, "\x1B[%dA", n)
 	}
-	fmt.Fprint(mb.out, "\x1B[?7l") // DECAWM off: prevent long lines from wrapping into bar rows
 	fmt.Fprint(mb.out, "\x1B[2K\x1B[1G")
-	fmt.Fprintln(mb.out, a...)
-	fmt.Fprint(mb.out, "\x1B[?7h") // DECAWM on
+	fmt.Fprint(mb.out, fmt.Sprint(a...))
+	fmt.Fprint(mb.out, "\x1B[0K\n")
 	mb.renderedLines = 0
 	mb.renderAllLocked()
 }
