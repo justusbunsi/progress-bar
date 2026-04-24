@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	cmd "github.com/elulcao/progress-bar/cmd"
+	cmd "github.com/justusbunsi/progress-bar/cmd"
 )
 
 func main() {

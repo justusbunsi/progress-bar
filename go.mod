@@ -1,4 +1,4 @@
-module github.com/elulcao/progress-bar
+module github.com/justusbunsi/progress-bar
 
 go 1.25.0
 

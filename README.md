@@ -1,69 +1,64 @@
 # progress-bar
 
-[![Go CI](https://github.com/elulcao/progress-bar/actions/workflows/go.yaml/badge.svg)](https://github.com/elulcao/progress-bar/blob/main/.github/workflows/go.yaml)
-[![CodeQl CI](https://github.com/elulcao/progress-bar/actions/workflows/codeql-analysis.yaml/badge.svg)](https://github.com/elulcao/progress-bar/blob/main/.github/workflows/codeql-analysis.yaml)
+A terminal progress bar library for Go with a package-manager look. Works on **Linux, macOS, and Windows**.
 
 ---
 
-<p
-    align="center">
-    <img
-        src="./.assets/demo-01.gif"
-        alt="Demo 01"
-        width="600"
-        height="400"
-    />
+<p align="center">
+    <img src="./.assets/demo-01.gif" alt="Demo" width="600" height="400" />
 </p>
 
 ---
 
-Another simple progress bar, but with a package installer flavor. The progress bar displays the
-progress like the well known package manager. This version adapts well to the windows size, small
-or big window size the progress bar will adapt to the change; the progress bar will adapt to the
-window size automatically.
+The progress bar renders on the last line of the terminal (stderr), leaving the rest of the window free for program output. It adapts automatically to terminal resize events.
 
-Last line of the window is preserved to show the progress, the rest of the window is used to show
-the program output that consumes the `progress-bar`.
+Default characters are `#` (done) and `.` (remaining) but can be changed per bar.
 
-Characters used by default are "#" and "." but can be changed by updating the struct:
+## Single bar
 
 ```go
-type PBar struct {
-    //...
-    DoneStr    = "#"
-    OngoingStr = "."
-    //...
+pb := cmd.NewPBar()
+pb.Total = 100
+pb.SignalHandler()
+defer pb.CleanUp()
+
+for i := 1; i <= int(pb.Total); i++ {
+    pb.RenderPBar(i)
+    pb.Println("step", i)   // prints above the bar without corrupting it
+    time.Sleep(100 * time.Millisecond)
 }
 ```
 
-## Usage
+## Concurrent bars (MultiBar)
 
-The `progress-bar.go` should be modified to your needs, currently implementation is limited to
-printing numbers from 1 to 100. In a real world scenario, the `count` variable should be used to
-be updated by another routine in your code.
+Multiple bars rendered simultaneously at the bottom — designed for `sync.WaitGroup` workloads. Log lines printed via `Println` scroll above all bars.
 
 ```go
- for count := 1; count <= pBar.Total; count++ {
-    pBar.renderPBar(count)
-    time.Sleep(time.Second)    // sleep for 1 second
-    fmt.Println(count)         // Update here to your needs
- }
+mb := cmd.NewMultiBar()
+mb.SignalHandler()
+defer mb.CleanUp()
+
+var wg sync.WaitGroup
+for _, task := range tasks {
+    wg.Add(1)
+    bar := mb.NewBar(task.Name, uint16(task.Steps))
+    go func(b *cmd.Bar) {
+        defer wg.Done()
+        for i := 1; i <= int(b.Total); i++ {
+            b.Set(i)
+            mb.Println("finished step", i)
+        }
+    }(bar)
+}
+wg.Wait()
 ```
 
-The `main.go` file can be used to test the progress bar. It is not used in the real world, but it
-can be used as a reference.
+## Credits
 
-```go
-go run main.go
-```
+Inspired by and based on [elulcao/progress-bar](https://github.com/elulcao/progress-bar). This fork adds Windows support and concurrent multi-bar rendering.
 
 ## Notes
 
-The `progress-bar` has to handler, `syscall.SIGWINCH` and `syscall.SIGTERM`, the first one is used
-to detect the window size change and the second one is used to detect the program termination.
-These handlers can be removed if not needed, your driver code should be able to handle the
-interruptions.
-
-`progress-bar_test.go` is used to test the progress bar but the most basic usabillity since the test
-is executed without a `TTY`. Due to this, the re-size of the window is not validated for now. It's
-highly recommended to verify the `progress_bar.go` via `go run main.go` to ensure the correct output.
+- **Signal handling**: `SignalHandler()` listens for resize events (SIGWINCH on Unix, polling on Windows) and for SIGTERM/SIGINT to clean up the terminal before exit. Call `defer mb.CleanUp()` to ensure the bar line is erased on normal exit.
+- **Non-TTY environments**: when stderr is a pipe or CI output, all rendering is skipped automatically and `Println` falls back to standard output.
+- **Testing**: unit tests run without a TTY. Use `go run main.go` to visually verify bar output. Integration tests require a PTY: `make test-integration`.
