@@ -36,13 +36,18 @@ import (
 //	}
 //	wg.Wait()
 type MultiBar struct {
-	mu   sync.Mutex
-	bars []*Bar
-	out  io.Writer
+	mu    sync.Mutex
+	bars  []*Bar
+	out   io.Writer
 	outFd uintptr
 
 	renderedLines int
 	wscol         uint16
+
+	// NonTTYStep controls non-TTY progress output. A line "label: count/total"
+	// is written to stderr each time a bar's percentage crosses a multiple of
+	// this value. Set to 0 to disable. Default: 10.
+	NonTTYStep int
 
 	signalTerm chan os.Signal
 	closeOnce  sync.Once
@@ -55,6 +60,7 @@ func NewMultiBar() *MultiBar {
 	mb := &MultiBar{
 		out:        os.Stderr,
 		outFd:      os.Stderr.Fd(),
+		NonTTYStep: 10,
 		signalTerm: make(chan os.Signal, 1),
 		done:       make(chan struct{}),
 	}

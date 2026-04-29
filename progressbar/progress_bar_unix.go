@@ -32,6 +32,11 @@ type PBar struct {
 	DoneStr    string // progress bar "done" character(s)
 	OngoingStr string // progress bar "remaining" character(s)
 
+	// NonTTYStep controls non-TTY progress output. A line "count/total" is
+	// written to stderr each time the percentage crosses a multiple of this
+	// value. Set to 0 to disable non-TTY output entirely. Default: 10.
+	NonTTYStep int
+
 	// out is where the progress bar is rendered (default: stderr).
 	// Keeping the bar on stderr avoids mixing it with "real program" stdout output.
 	out   io.Writer
@@ -39,7 +44,8 @@ type PBar struct {
 
 	mu sync.Mutex // serialize all terminal IO and state changes
 
-	lastCount int // last RenderPBar() count; used to redraw on SIGWINCH
+	lastCount        int // last RenderPBar() count; used to redraw on SIGWINCH
+	lastNonTTYBucket int // last percentage-bucket emitted in non-TTY mode
 
 	done chan struct{}
 
@@ -74,6 +80,7 @@ func NewPBar() *PBar {
 	pb := &PBar{
 		DoneStr:     "#",
 		OngoingStr:  ".",
+		NonTTYStep:  10,
 		out:         os.Stderr,      // progress bar defaults to stderr
 		outFd:       os.Stderr.Fd(), // and we query tty size on stderr
 		signalWinch: make(chan os.Signal, 1),

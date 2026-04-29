@@ -25,15 +25,21 @@ type PBar struct {
 	DoneStr    string
 	OngoingStr string
 
+	// NonTTYStep controls non-TTY progress output. A line "count/total" is
+	// written to stderr each time the percentage crosses a multiple of this
+	// value. Set to 0 to disable non-TTY output entirely. Default: 10.
+	NonTTYStep int
+
 	out   io.Writer
 	outFd uintptr
 
 	mu sync.Mutex
 
-	lastCount       int
-	done            chan struct{}
-	lastRenderWidth int
-	wscol           uint16
+	lastCount        int
+	lastNonTTYBucket int
+	done             chan struct{}
+	lastRenderWidth  int
+	wscol            uint16
 
 	signalTerm chan os.Signal
 	closeOnce  sync.Once
@@ -50,6 +56,7 @@ func NewPBar() *PBar {
 	pb := &PBar{
 		DoneStr:    "#",
 		OngoingStr: ".",
+		NonTTYStep: 10,
 		out:        os.Stderr,
 		outFd:      os.Stderr.Fd(),
 		signalTerm: make(chan os.Signal, 1),

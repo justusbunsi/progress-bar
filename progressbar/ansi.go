@@ -17,7 +17,11 @@ import (
 //  3. clear the whole line, draw, then clear to end (EL0)
 func (pb *PBar) renderNoLock(count int) {
 	ok, _ := pb.isTTYLocked()
-	if !ok || pb.Total == 0 {
+	if !ok {
+		pb.nonTTYRenderLocked(count)
+		return
+	}
+	if pb.Total == 0 {
 		return
 	}
 
@@ -88,4 +92,20 @@ func (pb *PBar) renderNoLock(count int) {
 	// ---------------------------------------
 
 	pb.lastRenderWidth = vis
+}
+
+// nonTTYRenderLocked emits a plain "count/total" line to pb.out each time
+// the percentage crosses a new NonTTYStep boundary. Assumes pb.mu is held.
+func (pb *PBar) nonTTYRenderLocked(count int) {
+	if pb.Total == 0 || pb.NonTTYStep <= 0 {
+		return
+	}
+	count = clamp(count, 0, int(pb.Total))
+	pct := count * 100 / int(pb.Total)
+	bucket := pct / pb.NonTTYStep
+	if bucket <= pb.lastNonTTYBucket {
+		return
+	}
+	pb.lastNonTTYBucket = bucket
+	fmt.Fprintf(pb.out, "%d/%d\n", count, pb.Total)
 }

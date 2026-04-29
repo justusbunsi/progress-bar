@@ -8,12 +8,13 @@ import (
 // Bar is a single named progress bar owned by a MultiBar.
 // Obtain one via MultiBar.NewBar(); call Set or Inc from any goroutine.
 type Bar struct {
-	mb         *MultiBar
-	Label      string
-	Total      uint16
-	DoneStr    string
-	OngoingStr string
-	count      int
+	mb               *MultiBar
+	Label            string
+	Total            uint16
+	DoneStr          string
+	OngoingStr       string
+	count            int
+	lastNonTTYBucket int
 }
 
 // Set updates the bar to count and triggers a redraw of all bars.
@@ -39,6 +40,9 @@ func (b *Bar) Inc() {
 func (mb *MultiBar) renderAllLocked() {
 	ok, _ := mb.isTTYLocked()
 	if !ok {
+		for _, b := range mb.bars {
+			mb.nonTTYBarLineLocked(b)
+		}
 		return
 	}
 
@@ -116,4 +120,25 @@ func (mb *MultiBar) renderBarLineLocked(b *Bar, cols int) {
 	line = truncateVisible(line, maxVis)
 	fmt.Fprint(mb.out, line)
 	fmt.Fprint(mb.out, "\x1B[0K") // clear any remnant to end-of-line
+}
+
+// nonTTYBarLineLocked emits a plain "label: count/total" (or "count/total")
+// line to mb.out each time the bar percentage crosses a NonTTYStep boundary.
+// Assumes mb.mu is held.
+func (mb *MultiBar) nonTTYBarLineLocked(b *Bar) {
+	if b.Total == 0 || mb.NonTTYStep <= 0 {
+		return
+	}
+	count := clamp(b.count, 0, int(b.Total))
+	pct := count * 100 / int(b.Total)
+	bucket := pct / mb.NonTTYStep
+	if bucket <= b.lastNonTTYBucket {
+		return
+	}
+	b.lastNonTTYBucket = bucket
+	if b.Label != "" {
+		fmt.Fprintf(mb.out, "%s: %d/%d\n", b.Label, count, b.Total)
+	} else {
+		fmt.Fprintf(mb.out, "%d/%d\n", count, b.Total)
+	}
 }
